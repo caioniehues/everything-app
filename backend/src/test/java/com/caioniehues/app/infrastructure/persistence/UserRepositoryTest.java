@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
+import com.caioniehues.app.config.JpaConfig;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -20,11 +22,13 @@ import java.time.temporal.ChronoUnit;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 @DataJpaTest
 @Testcontainers
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(JpaConfig.class)
 class UserRepositoryTest {
 
     @Container
@@ -187,10 +191,11 @@ class UserRepositoryTest {
     }
 
     @Test
-    @DisplayName("Should enforce unique constraints")
-    void shouldEnforceUniqueConstraints() {
+    @DisplayName("Should enforce unique username constraint")
+    void shouldEnforceUniqueUsernameConstraint() {
         userRepository.save(testUser);
         entityManager.flush();
+        entityManager.clear();
 
         // Try to save another user with same username
         User duplicateUsername = User.builder()
@@ -200,31 +205,40 @@ class UserRepositoryTest {
             .fullName("Different User")
             .build();
 
-        assertThat(userRepository.save(duplicateUsername))
-            .isNotNull(); // Save succeeds but flush should fail
+        userRepository.save(duplicateUsername);
 
-        try {
-            entityManager.flush();
-        } catch (Exception e) {
-            assertThat(e).hasMessageContaining("constraint");
-        }
+        assertThatThrownBy(() -> entityManager.flush())
+            .isInstanceOf(Exception.class)
+            .hasMessageContaining("constraint");
+    }
 
+    @Test
+    @DisplayName("Should enforce unique email constraint")
+    void shouldEnforceUniqueEmailConstraint() {
+        // Create a new user for this test to avoid transaction issues
+        User testUser2 = User.builder()
+            .username("testuser2")
+            .email("test2@example.com")
+            .passwordHash("password")
+            .fullName("Test User 2")
+            .build();
+
+        userRepository.save(testUser2);
+        entityManager.flush();
         entityManager.clear();
 
         // Try to save another user with same email
         User duplicateEmail = User.builder()
             .username("different")
-            .email("test@example.com")
+            .email("test2@example.com")
             .passwordHash("password")
             .fullName("Different User")
             .build();
 
         userRepository.save(duplicateEmail);
 
-        try {
-            entityManager.flush();
-        } catch (Exception e) {
-            assertThat(e).hasMessageContaining("constraint");
-        }
+        assertThatThrownBy(() -> entityManager.flush())
+            .isInstanceOf(Exception.class)
+            .hasMessageContaining("constraint");
     }
 }
