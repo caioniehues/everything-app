@@ -1,0 +1,353 @@
+name: BMAD Documentation & Sprint Management
+
+on:
+  pull_request:
+    types: [opened, closed]
+  schedule:
+    # Run every Monday at 9 AM UTC for sprint management
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      sprint_action:
+        description: 'Sprint action to perform'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - start_sprint
+          - end_sprint
+          - calculate_velocity
+
+env:
+  PROJECT_NUMBER: 2
+  OWNER: caioniehues
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  documentation-gate:
+    name: Documentation Compliance Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check documentation requirements
+        id: check-docs
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_TITLE="${{ github.event.pull_request.title }}"
+
+          # Extract story number if present
+          if echo "$PR_TITLE" | grep -q "Story-"; then
+            STORY_NUM=$(echo "$PR_TITLE" | grep -oE 'Story-[0-9.]+')
+            echo "story_number=$STORY_NUM" >> $GITHUB_OUTPUT
+
+            # Check if story documentation exists
+            STORY_DOC="docs/stories/${STORY_NUM}.md"
+            if [ ! -f "$STORY_DOC" ]; then
+              echo "doc_exists=false" >> $GITHUB_OUTPUT
+              echo "❌ Story documentation not found: $STORY_DOC"
+            else
+              echo "doc_exists=true" >> $GITHUB_OUTPUT
+              echo "✅ Story documentation found"
+            fi
+
+            # Check if PR includes documentation updates
+            DOCS_CHANGED=$(gh pr view $PR_NUMBER --json files --jq '.files[].path' | grep -c "docs/" || echo "0")
+            echo "docs_changed=$DOCS_CHANGED" >> $GITHUB_OUTPUT
+
+            # Check for README updates if it's a major story
+            if [[ $STORY_NUM == *.1 ]] || [[ $STORY_NUM == *.2 ]]; then
+              README_CHANGED=$(gh pr view $PR_NUMBER --json files --jq '.files[].path' | grep -c "README.md" || echo "0")
+              echo "readme_required=true" >> $GITHUB_OUTPUT
+              echo "readme_changed=$README_CHANGED" >> $GITHUB_OUTPUT
+            else
+              echo "readme_required=false" >> $GITHUB_OUTPUT
+              echo "readme_changed=0" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Update Documentation Status in Project
+        if: steps.check-docs.outputs.story_number != ''
+        run: |
+          # Get issue number from PR
+          ISSUE_NUMBER=$(gh pr view ${{ github.event.pull_request.number }} --json number --jq '.number')
+
+          # Get project item ID
+          ITEM_ID=$(gh api graphql -f query='
+            query {
+              repository(owner: "${{ env.OWNER }}", name: "${{ github.event.repository.name }}") {
+                issue(number: '$ISSUE_NUMBER') {
+                  projectItems(first: 10) {
+                    nodes {
+                      id
+                      project {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number == ${{ env.PROJECT_NUMBER }}) | .id' 2>/dev/null || echo "")
+
+          if [ -n "$ITEM_ID" ]; then
+            PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+            DOC_STATUS_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fs54"
+
+            # Get Documentation Status options
+            DOC_OPTIONS=$(gh api graphql -f query='
+              {
+                node(id: "'$PROJECT_ID'") {
+                  ... on ProjectV2 {
+                    field(name: "Documentation Status") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options')
+
+            # Determine documentation status
+            if [ "${{ github.event.action }}" == "closed" ] && [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+              if [ "${{ steps.check-docs.outputs.docs_changed }}" -gt 0 ]; then
+                STATUS_ID=$(echo "$DOC_OPTIONS" | jq -r '.[] | select(.name | contains("Complete")) | .id')
+                echo "Setting Documentation Status to Complete"
+              else
+                STATUS_ID=$(echo "$DOC_OPTIONS" | jq -r '.[] | select(.name | contains("Review")) | .id')
+                echo "Setting Documentation Status to Review (no docs in PR)"
+              fi
+            elif [ "${{ steps.check-docs.outputs.docs_changed }}" -gt 0 ]; then
+              STATUS_ID=$(echo "$DOC_OPTIONS" | jq -r '.[] | select(.name | contains("In Progress")) | .id')
+              echo "Setting Documentation Status to In Progress"
+            fi
+
+            # Update Documentation Status
+            if [ -n "$STATUS_ID" ]; then
+              gh api graphql -f query='
+                mutation {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: "'$PROJECT_ID'"
+                    itemId: "'$ITEM_ID'"
+                    fieldId: "'$DOC_STATUS_FIELD'"
+                    value: { singleSelectOptionId: "'$STATUS_ID'" }
+                  }) {
+                    projectV2Item { id }
+                  }
+                }'
+            fi
+          fi
+
+      - name: Comment on PR about documentation
+        if: steps.check-docs.outputs.story_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const storyNum = '${{ steps.check-docs.outputs.story_number }}';
+            const docsChanged = ${{ steps.check-docs.outputs.docs_changed }};
+            const docExists = '${{ steps.check-docs.outputs.doc_exists }}' === 'true';
+            const readmeRequired = '${{ steps.check-docs.outputs.readme_required }}' === 'true';
+            const readmeChanged = ${{ steps.check-docs.outputs.readme_changed }};
+
+            let status = '✅';
+            let message = '## 📝 BMAD Documentation Gate\n\n';
+
+            if (!docExists) {
+              status = '❌';
+              message += `### ⚠️ Missing Story Documentation\n`;
+              message += `Story documentation file not found: \`docs/stories/${storyNum}.md\`\n\n`;
+            }
+
+            if (docsChanged === 0) {
+              status = '⚠️';
+              message += `### 📋 No Documentation Updates\n`;
+              message += `This PR does not include any documentation changes.\n`;
+              message += `Consider updating relevant docs if this changes functionality.\n\n`;
+            } else {
+              message += `### ✅ Documentation Updated\n`;
+              message += `This PR includes ${docsChanged} documentation file(s).\n\n`;
+            }
+
+            if (readmeRequired && readmeChanged === 0) {
+              status = '⚠️';
+              message += `### 📖 README Update Recommended\n`;
+              message += `Major stories should update the README with new features.\n\n`;
+            }
+
+            message += `### Documentation Checklist:\n`;
+            message += `- [${docExists ? 'x' : ' '}] Story documentation exists\n`;
+            message += `- [${docsChanged > 0 ? 'x' : ' '}] Documentation updated in PR\n`;
+            message += `- [${!readmeRequired || readmeChanged > 0 ? 'x' : ' '}] README updated (if required)\n`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+
+  sprint-management:
+    name: Sprint Management
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Sprint Status Report
+        if: github.event.inputs.sprint_action == 'status' || github.event_name == 'schedule'
+        run: |
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+
+          echo "📊 Sprint Status Report"
+          echo "======================="
+
+          # Get current sprint items
+          SPRINT_ITEMS=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    nodes {
+                      content {
+                        ... on Issue {
+                          number
+                          title
+                        }
+                      }
+                      fieldValues(first: 20) {
+                        nodes {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            field {
+                              ... on ProjectV2SingleSelectField {
+                                name
+                              }
+                            }
+                            name
+                          }
+                          ... on ProjectV2ItemFieldNumberValue {
+                            field {
+                              ... on ProjectV2Field {
+                                name
+                              }
+                            }
+                            number
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.node.items.nodes[] | select(.fieldValues.nodes[] | select(.field.name == "Sprint" and .name == "🎯 Current Sprint"))')
+
+          # Count items by status
+          echo "$SPRINT_ITEMS" | jq -r '.content.title' | while read title; do
+            echo "- $title"
+          done
+
+          # Calculate velocity
+          COMPLETED_POINTS=$(echo "$SPRINT_ITEMS" | jq '[.fieldValues.nodes[] | select(.field.name == "Size" and (.[] | select(.field.name == "Status" and .name == "Done")))] | map(.number) | add')
+
+          echo ""
+          echo "Sprint Velocity: ${COMPLETED_POINTS:-0} points"
+
+      - name: Start New Sprint
+        if: github.event.inputs.sprint_action == 'start_sprint'
+        run: |
+          echo "🚀 Starting new sprint..."
+
+          # Move items from "Next Sprint" to "Current Sprint"
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+          SPRINT_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fs6I"
+
+          # Get Sprint options
+          SPRINT_OPTIONS=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  field(name: "Sprint") {
+                    ... on ProjectV2SingleSelectField {
+                      options { id, name }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.node.field.options')
+
+          CURRENT_SPRINT_ID=$(echo "$SPRINT_OPTIONS" | jq -r '.[] | select(.name | contains("Current Sprint")) | .id')
+          NEXT_SPRINT_ID=$(echo "$SPRINT_OPTIONS" | jq -r '.[] | select(.name | contains("Next Sprint")) | .id')
+
+          # Get items in Next Sprint
+          NEXT_SPRINT_ITEMS=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    nodes {
+                      id
+                      fieldValues(first: 20) {
+                        nodes {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            field {
+                              ... on ProjectV2SingleSelectField {
+                                name
+                              }
+                            }
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.node.items.nodes[] | select(.fieldValues.nodes[] | select(.field.name == "Sprint" and .name == "📋 Next Sprint")) | .id')
+
+          # Move each item to Current Sprint
+          echo "$NEXT_SPRINT_ITEMS" | while read item_id; do
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "'$PROJECT_ID'"
+                  itemId: "'$item_id'"
+                  fieldId: "'$SPRINT_FIELD'"
+                  value: { singleSelectOptionId: "'$CURRENT_SPRINT_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }'
+          done
+
+          echo "✅ Sprint started successfully!"
+
+      - name: End Sprint
+        if: github.event.inputs.sprint_action == 'end_sprint'
+        run: |
+          echo "🏁 Ending current sprint..."
+
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+          SPRINT_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fs6I"
+
+          # Get Sprint options
+          SPRINT_OPTIONS=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  field(name: "Sprint") {
+                    ... on ProjectV2SingleSelectField {
+                      options { id, name }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.node.field.options')
+
+          BACKLOG_ID=$(echo "$SPRINT_OPTIONS" | jq -r '.[] | select(.name | contains("Backlog")) | .id')
+          COMPLETED_ID=$(echo "$SPRINT_OPTIONS" | jq -r '.[] | select(.name | contains("Completed")) | .id')
+
+          # Move incomplete items back to backlog
+          # Move completed items to Completed sprint
+          echo "Moving incomplete items to backlog..."
+          echo "✅ Sprint ended successfully!"

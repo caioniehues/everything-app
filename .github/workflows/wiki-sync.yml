@@ -1,0 +1,165 @@
+name: Sync Documentation to Wiki
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CLAUDE.md'
+      - '.github/workflows/README.md'
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force full wiki sync'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+
+      - name: Clone Wiki
+        run: |
+          git clone https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+
+      - name: Sync Documentation
+        run: |
+          # Create Home page
+          cat > wiki/Home.md << 'EOF'
+          # Everything App Documentation
+
+          Welcome to the Everything App documentation wiki!
+
+          ## 📚 Documentation Sections
+
+          ### Getting Started
+          - [[Project Overview|README]]
+          - [[AI Assistant Guide|CLAUDE]]
+          - [[Development Setup]]
+
+          ### Architecture
+          - [[Architecture Overview]]
+          - [[Frontend Architecture]]
+          - [[Tech Stack]]
+          - [[Coding Standards]]
+
+          ### User Stories
+          - [[Epic Story Summary]]
+          - [[Story Dependencies]]
+          - [[Sprint Planning]]
+
+          ### Development
+          - [[BMAD Workflow]]
+          - [[TDD Guide]]
+          - [[GitHub Actions]]
+
+          ## 📊 Project Status
+          - **Total Stories**: 38 (17 sharded)
+          - **Estimated Timeline**: 10 weeks to MVP
+          - **Coverage Requirements**: Backend 80%, Frontend 70%
+
+          ---
+          *Last synced: $(date '+%d/%m/%Y %H:%M:%S')*
+          EOF
+
+          # Copy README
+          cp README.md wiki/README.md
+          cp CLAUDE.md wiki/CLAUDE.md
+
+          # Copy architecture docs
+          for file in docs/architecture/*.md; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file" .md)
+              # Convert to wiki-friendly names
+              wiki_name=$(echo "$filename" | sed 's/-/ /g' | sed 's/\b\(.\)/\u\1/g' | sed 's/ /-/g')
+              cp "$file" "wiki/$wiki_name.md"
+            fi
+          done
+
+          # Copy story documentation
+          cp docs/stories/epic-story-summary.md wiki/Epic-Story-Summary.md 2>/dev/null || true
+
+          # Copy individual stories
+          for file in docs/stories/story-*.md; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file" .md)
+              wiki_name=$(echo "$filename" | sed 's/story-/Story-/')
+              cp "$file" "wiki/$wiki_name.md"
+            fi
+          done
+
+          # Copy other important docs
+          [ -f docs/prd.md ] && cp docs/prd.md wiki/Product-Requirements.md
+          [ -f docs/development-status.md ] && cp docs/development-status.md wiki/Development-Status.md
+          [ -f .github/workflows/README.md ] && cp .github/workflows/README.md wiki/GitHub-Actions.md
+
+          # Create sidebar
+          cat > wiki/_Sidebar.md << 'EOF'
+          ### Navigation
+
+          **Getting Started**
+          - [[Home]]
+          - [[README]]
+          - [[CLAUDE]]
+
+          **Architecture**
+          - [[Architecture Overview]]
+          - [[Frontend Architecture]]
+          - [[Tech Stack]]
+          - [[Coding Standards]]
+
+          **Stories**
+          - [[Epic Story Summary]]
+          - [[Story List]]
+
+          **Development**
+          - [[BMAD Workflow]]
+          - [[TDD Guide]]
+          - [[GitHub Actions]]
+          EOF
+
+      - name: Commit and Push Wiki
+        working-directory: wiki
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to sync"
+          else
+            git commit -m "docs: auto-sync from main repository
+
+          Updated from commit: ${{ github.sha }}
+          Triggered by: ${{ github.event_name }}
+
+          [View changes](https://github.com/${{ github.repository }}/commit/${{ github.sha }})"
+
+            git push
+            echo "✅ Wiki updated successfully"
+          fi
+
+      - name: Create Summary
+        run: |
+          echo "## Wiki Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Synced successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date '+%d/%m/%Y %H:%M:%S')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Wiki URL**: [View Wiki](https://github.com/${{ github.repository }}/wiki)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Files Synced" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -la wiki/*.md | wc -l
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
