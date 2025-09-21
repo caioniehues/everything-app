@@ -1,0 +1,114 @@
+name: Claude Daily Standup
+
+on:
+  schedule:
+    # Run every weekday at 9 AM UTC
+    - cron: '0 9 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  daily-standup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Daily Standup
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Generate a daily standup report for the Everything App project.
+
+            ## Standup Report Sections:
+
+            ### 📅 Yesterday's Progress
+            1. **Completed Work**
+               - List PRs merged in last 24 hours
+               - Stories/tasks completed
+               - Documentation updates
+               - Tests written
+
+            2. **Code Metrics**
+               - Lines of code changed
+               - Test coverage delta
+               - Files modified
+               - Commits made
+
+            ### 🚀 Today's Focus
+            1. **In-Progress Work**
+               - Open PRs awaiting review
+               - Active story implementations
+               - Stories marked as "in_progress"
+
+            2. **Planned Work**
+               - Next stories in queue (from epic-story-summary.md)
+               - Dependencies ready
+               - Estimated completion
+
+            ### 🚧 Blockers & Risks
+            1. **Current Blockers**
+               - PRs with requested changes
+               - Failed CI/CD pipelines
+               - Stories blocked by dependencies
+               - Technical debt impacting progress
+
+            2. **Risk Assessment**
+               - Stories at risk of not completing
+               - Coverage dropping below threshold
+               - Dependency issues
+
+            ### 📊 Sprint Progress
+            1. **Sprint Metrics**
+               - Story points completed vs planned
+               - Days remaining in sprint
+               - Velocity tracking
+               - Burndown status
+
+            2. **Project Timeline**
+               - Current epic progress
+               - Milestone status
+               - MVP completion percentage
+
+            ### 🎯 Action Items
+            1. **Immediate Actions**
+               - PRs needing review
+               - Critical bugs to fix
+               - Documentation to update
+               - Tests to write
+
+            2. **Team Reminders**
+               - Follow TDD approach
+               - Update story status
+               - No TODO comments
+               - Maintain test coverage
+
+            ## Virtual Team Updates:
+            Provide updates from virtual team members:
+            - **Ruby (Backend)**: Backend development status
+            - **Frontend Dev**: Flutter progress
+            - **Winston (Architect)**: Technical decisions needed
+            - **Sarah (PO)**: Priority changes or clarifications
+
+            ## Output Format:
+            Create a GitHub issue with title: "Daily Standup - {date}"
+            Label it with: "standup", "daily-report"
+
+            If there are critical blockers:
+            - Tag relevant team members
+            - Set priority label
+            - Link to blocked PRs/issues
+
+            Keep report concise but informative.
+            Use emojis for visual scanning.
+            Focus on actionable items.
+
+          claude_args: '--allowed-tools "Bash(gh issue create:*),Bash(gh pr list:*),Bash(gh issue list:*),Bash(git log:*),Bash(date:*)"'

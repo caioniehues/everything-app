@@ -1,0 +1,74 @@
+name: Claude TDD Validator
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'backend/src/main/**/*.java'
+      - 'frontend/lib/**/*.dart'
+
+jobs:
+  tdd-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Validate TDD Practice
+        id: tdd-check
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Analyze this PR to verify TDD (Test-Driven Development) was followed.
+
+            ## TDD Validation Steps:
+
+            1. **Commit History Analysis**
+               - Check commit order: tests should be committed BEFORE implementation
+               - Look for pattern: test commit → implementation commit → refactor commit
+               - Use `gh pr commits` and `git log` to analyze
+
+            2. **Test Coverage Check**
+               - Backend: Minimum 80% coverage required
+               - Frontend: Minimum 70% coverage required
+               - Check for untested code paths
+               - Verify critical paths have tests
+
+            3. **Test Quality Assessment**
+               - Tests follow Given-When-Then or Arrange-Act-Assert pattern
+               - Tests are isolated and independent
+               - Tests have descriptive names
+               - No commented-out tests
+
+            4. **Red-Green-Refactor Evidence**
+               - Look for evidence tests were written first
+               - Check if tests actually test business logic
+               - Verify tests aren't just written to pass
+
+            ## Report Format:
+            Create a check run with status (success/failure) and detailed comment.
+
+            If TDD wasn't followed:
+            - Set check status to failure
+            - Provide specific examples of violations
+            - Suggest how to fix the issues
+            - Reference the story being implemented
+
+            If TDD was properly followed:
+            - Set check status to success
+            - Highlight good TDD practices observed
+            - Note the test coverage percentage
+
+            Use `gh pr comment` to provide detailed feedback.
+
+          claude_args: '--allowed-tools "Bash(git log:*),Bash(gh pr commits:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr checks:*)"'

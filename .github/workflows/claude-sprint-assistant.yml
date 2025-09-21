@@ -1,0 +1,113 @@
+name: Claude Sprint Assistant
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC (start of sprint)
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Sprint action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan      # Plan next sprint
+          - review    # Review current sprint
+          - velocity  # Calculate team velocity
+          - backlog   # Organize backlog
+
+jobs:
+  sprint-management:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sprint Management
+        id: sprint-assistant
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Act as Sarah (Product Owner) and help manage the sprint.
+
+            ## Sprint Planning (if action = plan or scheduled):
+
+            1. **Review Story Backlog**
+               - Read /docs/stories/epic-story-summary.md
+               - Identify ready stories (dependencies met)
+               - Check story sizes (prefer 1-3 day stories)
+               - Consider sharded stories for parallel work
+
+            2. **Create Sprint Plan**
+               - Sprint capacity: ~10 story points
+               - Balance backend and frontend work
+               - Ensure critical path items included
+               - Account for testing and documentation
+
+            3. **Generate Sprint Issues**
+               - Create GitHub issues for selected stories
+               - Add labels: sprint-{number}, story-{id}, {epic}
+               - Set milestones
+               - Assign story points
+               - Link dependencies
+
+            ## Sprint Review (if action = review):
+
+            1. **Analyze Completed Work**
+               - Check closed PRs in last 2 weeks
+               - Calculate story points completed
+               - Identify incomplete stories
+               - Note blockers encountered
+
+            2. **Generate Sprint Report**
+               - Stories completed vs planned
+               - Test coverage metrics
+               - Documentation updates
+               - Technical debt addressed
+
+            ## Velocity Calculation (if action = velocity):
+
+            1. **Calculate Metrics**
+               - Average story points per sprint
+               - Completion rate
+               - Bug vs feature ratio
+               - Time to completion by story size
+
+            2. **Project Timeline**
+               - Remaining story points
+               - Projected sprints to MVP
+               - Risk assessment
+
+            ## Backlog Grooming (if action = backlog):
+
+            1. **Story Organization**
+               - Validate all stories have estimates
+               - Check for missing dependencies
+               - Identify stories needing sharding
+               - Prioritize based on business value
+
+            2. **Technical Debt**
+               - Identify areas needing refactoring
+               - Create tech debt stories
+               - Balance with feature work
+
+            ## Output:
+            - Create/update sprint planning issue
+            - Generate markdown report
+            - Post summary to appropriate channel
+            - Update /docs/development-status.md
+
+            Use BMAD workflow and maintain consistency with project standards.
+            Reference stories properly and maintain traceability.
+
+          claude_args: '--allowed-tools "Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(date:*)"'
