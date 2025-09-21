@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Check if user can be assigned
         id: check-permissions
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const commenter = context.payload.comment.user.login;
@@ -99,7 +99,7 @@ jobs:
 
       - name: Assign Issue
         if: steps.check-permissions.outputs.can_proceed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue.number;
@@ -220,7 +220,7 @@ jobs:
 
       - name: Post Instructions
         if: steps.check-permissions.outputs.can_proceed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue.number;
@@ -290,7 +290,7 @@ jobs:
 
     steps:
       - name: Get Issue Status
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue.number;
@@ -344,7 +344,7 @@ jobs:
 
     steps:
       - name: Post Help Message
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue.number;
@@ -408,7 +408,7 @@ jobs:
 
     steps:
       - name: Comment on Assignment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.payload.issue.number;

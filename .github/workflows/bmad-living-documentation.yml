@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Calculate Project Metrics
         id: metrics
@@ -99,10 +99,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -223,7 +223,7 @@ jobs:
           EOF
 
       - name: Upload Architecture Docs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: architecture-docs
           path: docs/generated/architecture/
@@ -236,7 +236,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate Sprint Report
         run: |
@@ -340,7 +340,7 @@ jobs:
             >> docs/generated/reports/sprint-week-$WEEK_NUM.md
 
       - name: Upload Sprint Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: sprint-reports
           path: docs/generated/reports/
@@ -352,7 +352,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Generate Compliance Report
         run: |
@@ -450,7 +450,7 @@ jobs:
           echo "| **Code Review** | ✅ Active | Required before merge |" >> docs/generated/compliance/bmad-compliance.md
 
       - name: Upload Compliance Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: compliance-reports
           path: docs/generated/compliance/
@@ -462,10 +462,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -529,7 +529,7 @@ jobs:
           EOF
 
       - name: Upload Coverage Reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-reports
           path: docs/generated/coverage/
@@ -542,10 +542,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v5
         with:
           path: docs/generated/
 
