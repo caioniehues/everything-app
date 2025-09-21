@@ -1,8 +1,8 @@
-# CLAUDE.md - AI Assistant Project Guide
+# CLAUDE.md
 
-> Comprehensive guidance for Claude Code and other AI assistants working with the Everything App codebase
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Last Updated: 21/09/2025 02:00:50
+Last Updated: 21/09/2025 05:04:35
 
 ## 🎯 Project Overview
 
@@ -75,24 +75,47 @@ everything-app/
 ### Backend (Spring Boot)
 
 ```bash
-# Start database services first
+# Start database services first (PostgreSQL + pgAdmin)
 cd backend && docker compose up -d
+# Access pgAdmin at: http://localhost:5050
+# Login: admin@everything.app / admin
+# Database: postgres:5432 / everythingapp / appuser / apppassword
 
 # Run the application
 cd backend && ./mvnw spring-boot:run
+# API available at: http://localhost:8080
 
 # Build the application
 cd backend && ./mvnw clean package
 
-# Run tests with coverage
+# Run all tests with coverage
 cd backend && ./mvnw clean test jacoco:report
 # View coverage: open target/site/jacoco/index.html
 
+# Run a single test class
+cd backend && ./mvnw test -Dtest=UserServiceTest
+
+# Run tests matching a pattern
+cd backend && ./mvnw test -Dtest="*Service*"
+
+# Run a specific test method
+cd backend && ./mvnw test -Dtest=UserServiceTest#shouldCreateUser
+
+# Run integration tests only
+cd backend && ./mvnw test -Dtest="*IntegrationTest"
+
+# Skip tests during build
+cd backend && ./mvnw clean package -DskipTests
+
 # Database migrations
 cd backend && ./mvnw liquibase:update
+cd backend && ./mvnw liquibase:rollback -Dliquibase.rollbackCount=1
 
 # Run with hot reload (DevTools enabled)
 cd backend && ./mvnw spring-boot:run -Dspring-boot.run.fork=false
+
+# Run with specific profile
+cd backend && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
 # Build native image with GraalVM
 cd backend && ./mvnw native:compile -Pnative
@@ -102,6 +125,12 @@ cd backend && ./mvnw spring-boot:build-image -Pnative
 
 # Run native tests
 cd backend && ./mvnw test -PnativeTest
+
+# Check for dependency updates
+cd backend && ./mvnw versions:display-dependency-updates
+
+# Generate dependency tree
+cd backend && ./mvnw dependency:tree
 ```
 
 ### Frontend (Flutter)
@@ -113,9 +142,26 @@ cd frontend && flutter pub get
 # Run on web (fastest for development)
 cd frontend && flutter run -d chrome
 
+# Run with hot reload (default in debug mode)
+cd frontend && flutter run -d chrome --hot
+
 # Run tests with coverage
 cd frontend && flutter test --coverage
-# View coverage: lcov --list coverage/lcov.info
+# Generate HTML coverage report
+cd frontend && genhtml coverage/lcov.info -o coverage/html
+# View coverage: open coverage/html/index.html
+
+# Run a single test file
+cd frontend && flutter test test/widget_test.dart
+
+# Run tests matching a name pattern
+cd frontend && flutter test --name="should create user"
+
+# Run tests in a specific directory
+cd frontend && flutter test test/features/auth/
+
+# Run tests with detailed output
+cd frontend && flutter test --reporter expanded
 
 # Run on specific platform
 cd frontend && flutter run -d chrome    # Web
@@ -123,11 +169,14 @@ cd frontend && flutter run -d linux     # Linux desktop
 cd frontend && flutter run -d macos     # macOS desktop
 cd frontend && flutter run -d windows   # Windows desktop
 
+# List available devices
+cd frontend && flutter devices
+
 # Analyze code for issues
 cd frontend && flutter analyze
 
-# Run tests
-cd frontend && flutter test
+# Analyze with additional info
+cd frontend && flutter analyze --suggestions
 
 # Build for release
 cd frontend && flutter build web        # Web release
@@ -139,9 +188,48 @@ cd frontend && flutter build windows    # Windows executable
 
 # Format code
 cd frontend && dart format lib/
+cd frontend && dart format lib/ --fix  # Apply fixes
 
 # Check outdated packages
 cd frontend && flutter pub outdated
+
+# Upgrade packages
+cd frontend && flutter pub upgrade
+
+# Clean build artifacts
+cd frontend && flutter clean
+```
+
+### API Testing
+
+```bash
+# Test API endpoints with curl (examples)
+# Health check
+curl http://localhost:8080/actuator/health
+
+# Register a new user (when implemented)
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"SecurePass123!"}'
+
+# Login (when implemented)
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"SecurePass123!"}'
+
+# Test authenticated endpoint (when implemented)
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8080/api/v1/users/profile
+
+# Using httpie (more user-friendly)
+# Install: pip install httpie
+http POST localhost:8080/api/v1/auth/login \
+  email=test@example.com password=SecurePass123!
+
+# Using Spring Boot Actuator endpoints
+curl http://localhost:8080/actuator/info
+curl http://localhost:8080/actuator/metrics
+curl http://localhost:8080/actuator/env
 ```
 
 ## 📋 Development Workflow (BMAD)
@@ -153,6 +241,30 @@ cd frontend && flutter pub outdated
 4. **Implement Feature** to make tests pass
 5. **Document Changes** in relevant docs
 6. **Submit PR** with story reference
+
+### Automated Workflow Scripts
+```bash
+# Start work on a story (creates branch, assigns issue, updates project board)
+./scripts/start-story.sh <issue-number>
+./scripts/start-story.sh 3          # Start Story-1.1 (Issue #3)
+./scripts/start-story.sh 3 bugfix   # Create bugfix branch
+./scripts/start-story.sh 3 hotfix   # Create hotfix branch
+
+# GitHub Issue Management
+./scripts/create-github-issues.sh   # Create issues from story templates
+./scripts/link-issues-to-project.sh # Link issues to project board
+./scripts/populate-issue-fields.sh  # Populate custom fields
+
+# BMAD Project Configuration
+./scripts/configure-all-bmad-values.sh  # Set up all BMAD fields
+./scripts/populate-bmad-fields.sh       # Populate BMAD-specific data
+
+# Generate documentation
+./scripts/generate-docs.sh          # Update all auto-generated docs
+
+# Sync with GitHub Wiki
+./scripts/sync-wiki.sh              # Push docs to GitHub Wiki
+```
 
 ### Current Story Status
 - **Total Stories**: 38 items (17 sharded from 4 oversized stories)

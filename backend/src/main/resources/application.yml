@@ -4,8 +4,8 @@ spring:
 
   docker:
     compose:
-      enabled: true
-      file: backend/compose.yaml
+      enabled: false
+      file: compose.yaml
       lifecycle-management: start-and-stop
 
   datasource:

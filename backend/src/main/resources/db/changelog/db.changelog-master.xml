@@ -7,5 +7,6 @@
 
     <!-- Include all changeset files here in order -->
     <include file="changes/001-create-user-tables.xml" relativeToChangelogFile="true"/>
+    <include file="changes/002-add-base-entity-columns.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

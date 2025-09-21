@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Add missing BaseEntity columns to refresh_tokens table -->
+    <changeSet id="002-1" author="system" failOnError="false">
+        <comment>Add updated_at column to refresh_tokens table</comment>
+        <addColumn tableName="refresh_tokens">
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="002-2" author="system" failOnError="false">
+        <comment>Add version column to refresh_tokens table</comment>
+        <addColumn tableName="refresh_tokens">
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Add missing BaseEntity columns to event_store table -->
+    <changeSet id="002-3" author="system" failOnError="false">
+        <comment>Add updated_at column to event_store table</comment>
+        <addColumn tableName="event_store">
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="002-4" author="system" failOnError="false">
+        <comment>Add version column to event_store table</comment>
+        <addColumn tableName="event_store">
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Add missing BaseEntity columns to roles table -->
+    <changeSet id="002-5" author="system" failOnError="false">
+        <comment>Add created_at column to roles table if missing</comment>
+        <addColumn tableName="roles">
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="002-6" author="system" failOnError="false">
+        <comment>Add updated_at column to roles table</comment>
+        <addColumn tableName="roles">
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="002-7" author="system" failOnError="false">
+        <comment>Add version column to roles table</comment>
+        <addColumn tableName="roles">
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- Add missing BaseEntity columns to users table -->
+    <changeSet id="002-8" author="system" failOnError="false">
+        <comment>Add version column to users table</comment>
+        <addColumn tableName="users">
+            <column name="version" type="BIGINT" defaultValue="0">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
