@@ -1,0 +1,436 @@
+name: Story Development Commands
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [assigned]
+
+env:
+  PROJECT_NUMBER: 2
+  PROJECT_ID: PVT_kwHOA_Xhjc4BDod6
+  STATUS_FIELD: PVTSSF_lAHOA_Xhjc4BDod6zg1fnvA
+  SPRINT_FIELD: PVTSSF_lAHOA_Xhjc4BDod6zg1fs6I
+  DOC_STATUS_FIELD: PVTSSF_lAHOA_Xhjc4BDod6zg1fs54
+
+jobs:
+  handle-start-command:
+    name: Handle /start Command
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      (startsWith(github.event.comment.body, '/start') ||
+       startsWith(github.event.comment.body, '/begin') ||
+       startsWith(github.event.comment.body, '/develop'))
+
+    steps:
+      - name: Check if user can be assigned
+        id: check-permissions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commenter = context.payload.comment.user.login;
+            const issueNumber = context.payload.issue.number;
+
+            // Check if commenter has write access
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: commenter
+              });
+
+              if (!['admin', 'write'].includes(permission.permission)) {
+                await github.rest.issues.createComment({
+                  issue_number: issueNumber,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: `❌ @${commenter}, you need write access to start development on this issue.`
+                });
+                return false;
+              }
+            } catch (error) {
+              console.log('Permission check failed:', error);
+              return false;
+            }
+
+            core.setOutput('can_proceed', 'true');
+            core.setOutput('developer', commenter);
+
+      - name: Parse Command
+        if: steps.check-permissions.outputs.can_proceed == 'true'
+        id: parse
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          DEVELOPER="${{ steps.check-permissions.outputs.developer }}"
+
+          # Extract branch type if specified
+          BRANCH_TYPE="feature"
+          if echo "$COMMENT" | grep -q "bugfix"; then
+            BRANCH_TYPE="bugfix"
+          elif echo "$COMMENT" | grep -q "hotfix"; then
+            BRANCH_TYPE="hotfix"
+          elif echo "$COMMENT" | grep -q "chore"; then
+            BRANCH_TYPE="chore"
+          fi
+
+          # Extract story number from title
+          STORY_NUMBER=""
+          if echo "$ISSUE_TITLE" | grep -q "Story-"; then
+            STORY_NUMBER=$(echo "$ISSUE_TITLE" | grep -oE 'Story-[0-9.]+' | head -1 | sed 's/Story-//')
+          fi
+
+          # Generate branch name
+          if [ -n "$STORY_NUMBER" ]; then
+            STORY_DESC=$(echo "$ISSUE_TITLE" | sed -E 's/Story-[0-9.]+[: ]*//' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g' | cut -c1-50)
+            BRANCH_NAME="$BRANCH_TYPE/story-$STORY_NUMBER-$STORY_DESC"
+          else
+            ISSUE_DESC=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-+|-+$//g' | cut -c1-50)
+            BRANCH_NAME="$BRANCH_TYPE/issue-$ISSUE_NUMBER-$ISSUE_DESC"
+          fi
+
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "branch_type=$BRANCH_TYPE" >> $GITHUB_OUTPUT
+          echo "story_number=$STORY_NUMBER" >> $GITHUB_OUTPUT
+          echo "developer=$DEVELOPER" >> $GITHUB_OUTPUT
+
+      - name: Assign Issue
+        if: steps.check-permissions.outputs.can_proceed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const developer = '${{ steps.parse.outputs.developer }}';
+
+            // Assign the issue
+            await github.rest.issues.addAssignees({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              assignees: [developer]
+            });
+
+      - name: Update Project Board
+        if: steps.check-permissions.outputs.can_proceed == 'true'
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+
+          # Get project item ID
+          ITEM_ID=$(gh api graphql -f query='
+            query {
+              repository(owner: "${{ github.repository_owner }}", name: "${{ github.event.repository.name }}") {
+                issue(number: '$ISSUE_NUMBER') {
+                  projectItems(first: 10) {
+                    nodes {
+                      id
+                      project {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number == ${{ env.PROJECT_NUMBER }}) | .id' 2>/dev/null || echo "")
+
+          if [ -n "$ITEM_ID" ]; then
+            # Get Status options
+            IN_PROGRESS_ID=$(gh api graphql -f query='
+              {
+                node(id: "${{ env.PROJECT_ID }}") {
+                  ... on ProjectV2 {
+                    field(name: "Status") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options[] | select(.name == "In Progress") | .id')
+
+            # Get Sprint options
+            CURRENT_SPRINT_ID=$(gh api graphql -f query='
+              {
+                node(id: "${{ env.PROJECT_ID }}") {
+                  ... on ProjectV2 {
+                    field(name: "Sprint") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options[] | select(.name | contains("Current Sprint")) | .id')
+
+            # Get Documentation Status options
+            DOC_IN_PROGRESS_ID=$(gh api graphql -f query='
+              {
+                node(id: "${{ env.PROJECT_ID }}") {
+                  ... on ProjectV2 {
+                    field(name: "Documentation Status") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options[] | select(.name | contains("In Progress")) | .id')
+
+            # Update Status
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "${{ env.PROJECT_ID }}"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "${{ env.STATUS_FIELD }}"
+                  value: { singleSelectOptionId: "'$IN_PROGRESS_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }' >/dev/null 2>&1
+
+            # Update Sprint
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "${{ env.PROJECT_ID }}"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "${{ env.SPRINT_FIELD }}"
+                  value: { singleSelectOptionId: "'$CURRENT_SPRINT_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }' >/dev/null 2>&1
+
+            # Update Documentation Status
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "${{ env.PROJECT_ID }}"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "${{ env.DOC_STATUS_FIELD }}"
+                  value: { singleSelectOptionId: "'$DOC_IN_PROGRESS_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }' >/dev/null 2>&1
+          fi
+
+      - name: Post Instructions
+        if: steps.check-permissions.outputs.can_proceed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const branchName = '${{ steps.parse.outputs.branch_name }}';
+            const developer = '${{ steps.parse.outputs.developer }}';
+            const storyNumber = '${{ steps.parse.outputs.story_number }}';
+
+            const message = `🚀 **Development Started**
+
+            **Assigned to**: @${developer}
+            **Branch**: \`${branchName}\`
+            ${storyNumber ? `**Story**: ${storyNumber}` : ''}
+            **Started**: ${new Date().toLocaleString('pt-BR')}
+
+            ## 📋 Setup Instructions
+
+            \`\`\`bash
+            # Fetch latest changes
+            git fetch origin
+
+            # Create and checkout branch
+            git checkout -b ${branchName} origin/master
+
+            # Or use the automated script
+            ./scripts/start-story.sh ${issueNumber}
+            \`\`\`
+
+            ## ✅ Development Checklist
+
+            - [ ] Write tests first (TDD approach)
+            - [ ] Implement the feature
+            - [ ] Ensure test coverage (80% backend, 70% frontend)
+            - [ ] Update documentation
+            - [ ] Create PR with \`Closes #${issueNumber}\`
+
+            ## 🔗 Project Board Status
+
+            ✅ Issue assigned to @${developer}
+            ✅ Status updated to **In Progress**
+            ✅ Moved to **Current Sprint**
+            ✅ Documentation status set to **In Progress**
+
+            ## 💡 Available Commands
+
+            - \`/status\` - Check current status
+            - \`/blocked <reason>\` - Mark as blocked
+            - \`/ready-for-review\` - Move to review
+            - \`/help\` - Show all commands
+
+            ---
+            *Automated by GitHub Actions Story Development workflow*`;
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
+
+  handle-status-command:
+    name: Handle /status Command
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/status')
+
+    steps:
+      - name: Get Issue Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+
+            // Get issue details
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+
+            let status = '## 📊 Issue Status Report\n\n';
+            status += `**Issue**: #${issueNumber}\n`;
+            status += `**Title**: ${issue.title}\n`;
+            status += `**State**: ${issue.state.toUpperCase()}\n`;
+            status += `**Created**: ${new Date(issue.created_at).toLocaleDateString()}\n`;
+
+            if (issue.assignees.length > 0) {
+              status += `**Assignees**: ${issue.assignees.map(a => '@' + a.login).join(', ')}\n`;
+            } else {
+              status += `**Assignees**: Unassigned\n`;
+            }
+
+            if (issue.labels.length > 0) {
+              status += `**Labels**: ${issue.labels.map(l => '`' + l.name + '`').join(', ')}\n`;
+            }
+
+            if (issue.milestone) {
+              status += `**Milestone**: ${issue.milestone.title}\n`;
+            }
+
+            // Add project board link
+            status += `\n**Project Board**: [View on GitHub Projects](https://github.com/users/${{ github.repository_owner }}/projects/${{ env.PROJECT_NUMBER }})\n`;
+
+            status += '\n---\n*Status report generated by GitHub Actions*';
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: status
+            });
+
+  handle-help-command:
+    name: Handle /help Command
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/help')
+
+    steps:
+      - name: Post Help Message
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+
+            const helpMessage = `## 🤖 Story Development Commands
+
+            ### Starting Development
+            - \`/start\` - Start development on this issue (assigns to you, creates branch, updates board)
+            - \`/start bugfix\` - Start with bugfix branch instead of feature
+            - \`/start hotfix\` - Start with hotfix branch
+            - \`/develop\` - Alias for /start
+
+            ### Status Management
+            - \`/status\` - Get current issue status
+            - \`/blocked <reason>\` - Mark issue as blocked with reason
+            - \`/unblock\` - Remove blocked status
+            - \`/ready-for-review\` - Mark as ready for review
+
+            ### Project Board
+            - \`/sprint current\` - Move to current sprint
+            - \`/sprint next\` - Move to next sprint
+            - \`/sprint backlog\` - Move back to backlog
+
+            ### Documentation
+            - \`/docs pending\` - Mark documentation as pending
+            - \`/docs progress\` - Mark documentation in progress
+            - \`/docs complete\` - Mark documentation as complete
+
+            ### Other Commands
+            - \`/assign @username\` - Assign to specific user
+            - \`/estimate <points>\` - Set story points
+            - \`/help\` - Show this help message
+
+            ## 📋 Manual Script Usage
+
+            You can also use the local script:
+            \`\`\`bash
+            ./scripts/start-story.sh <issue-number> [branch-type]
+            \`\`\`
+
+            Examples:
+            \`\`\`bash
+            ./scripts/start-story.sh 3          # Start feature branch
+            ./scripts/start-story.sh 3 bugfix   # Start bugfix branch
+            \`\`\`
+
+            ---
+            *For more information, see the [Development Guide](https://github.com/${{ github.repository }}/wiki/Development-Guide)*`;
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: helpMessage
+            });
+
+  auto-start-on-assign:
+    name: Auto-Start When Assigned
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'assigned'
+
+    steps:
+      - name: Comment on Assignment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const assignee = context.payload.assignee.login;
+
+            const message = `👋 @${assignee}, you've been assigned to this issue!
+
+            To start development, comment \`/start\` or run:
+            \`\`\`bash
+            ./scripts/start-story.sh ${issueNumber}
+            \`\`\`
+
+            This will:
+            - Create a feature branch
+            - Update the project board to "In Progress"
+            - Set up your development environment
+
+            Type \`/help\` for more commands.`;
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });

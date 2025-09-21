@@ -368,5 +368,18 @@ Total: XXX hours
 - [External dependencies]
 ```
 
+## 📚 Additional Resources
+
+### Internal Documentation
+- [Development Workflow Guide](development-workflow.md) - Complete guide for using automation
+- [BMAD Workflow Guide](architecture/workflow.md) - BMAD methodology details
+- [GitHub Actions Documentation](.github/workflows/README.md) - Workflow configurations
+- [Epic Story Summary](stories/epic-story-summary.md) - All 38 stories
+
+### External Documentation
+- [GitHub Projects Documentation](https://docs.github.com/en/issues/planning-and-tracking-with-projects)
+- [GitHub GraphQL API](https://docs.github.com/en/graphql)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+
 ---
 *Last Updated: 21/09/2025 14:33:45*
