@@ -1,0 +1,38 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  liquibase:
+    enabled: false
+
+  security:
+    debug: true
+
+logging:
+  level:
+    org.springframework.security: INFO
+    com.caioniehues.app: INFO
+    org.hibernate.SQL: INFO
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO
+    io.github.bucket4j: INFO
+
+app:
+  jwt:
+    secret: test-secret-key-for-integration-tests-only-not-for-production-use
+    access-token-expiration-minutes: 15
+    refresh-token-expiration-days: 7
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

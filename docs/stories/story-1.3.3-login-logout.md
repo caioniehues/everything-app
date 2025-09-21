@@ -6,11 +6,11 @@ I want to securely login and logout of the application,
 so that I can access my financial data and protect it when done.
 
 ## Status
-**Status**: Draft
+**Status**: Mostly Complete (90%)
 **Epic**: Epic 1 - Foundation & Authentication System
 **Parent Story**: 1.3 - Authentication API & Security Layer
-**Started**: Not Started
-**Completed**: Not Completed
+**Started**: 21/09/2025
+**Completed**: In Progress
 **Developer**: Unassigned
 **Priority**: HIGH - Core functionality
 **Estimated Days**: 1 day

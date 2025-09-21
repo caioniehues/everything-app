@@ -1,0 +1,69 @@
+targets:
+  $default:
+    builders:
+      # Configure JSON serialization
+      json_serializable:
+        options:
+          # Generate code for all annotated classes
+          explicit_to_json: true
+          # Generate fromJson factory constructors
+          create_factory: true
+          # Generate toJson methods
+          create_to_json: true
+          # Use proper field renaming
+          field_rename: snake
+          # Check for null safety
+          checked: true
+          # Include fields with null values in JSON
+          include_if_null: false
+
+      # Configure Freezed
+      freezed:
+        options:
+          # Generate copyWith method
+          copy_with: true
+          # Generate equal and hashCode
+          equal: true
+          # Generate toString method
+          to_string: true
+          # Make all parameters required by default
+          make_collections_unmodifiable: true
+          # Union types support
+          union: true
+          # Generate when expressions for union types
+          when: true
+          # Generate map for union types
+          map: true
+
+      # Configure Riverpod
+      riverpod_generator:
+        options:
+          # Generate for all providers
+          build_extensions:
+            '.dart':
+              - '.g.dart'
+          # Enable all features
+          enable_auto_dispose: true
+          enable_provider_for_redirect: true
+
+      # Configure source_gen for all generators
+      source_gen|combining_builder:
+        options:
+          ignore_for_file:
+            - type=lint
+            - invalid_annotation_target
+            - unused_element
+            - unused_field
+            - missing_return
+
+global_options:
+  # Analyzer options for generated files
+  analyzer:
+    exclude:
+      - '**/*.g.dart'
+      - '**/*.freezed.dart'
+
+  # Build runner options
+  build_runner:
+    # Delete conflicting outputs
+    delete_conflicting_outputs: true
