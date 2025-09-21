@@ -1,0 +1,232 @@
+name: BMAD Project Board Automation
+
+on:
+  issues:
+    types: [opened, closed, reopened, assigned, unassigned, labeled, unlabeled]
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review, converted_to_draft]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+env:
+  PROJECT_NUMBER: 2
+  OWNER: caioniehues
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  update-project-board:
+    name: Update Project Board
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+      project: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get Project Item ID
+        id: get-item
+        run: |
+          # Get the issue or PR number
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            ISSUE_NUMBER=${{ github.event.pull_request.number }}
+          else
+            ISSUE_NUMBER=${{ github.event.issue.number }}
+          fi
+
+          echo "issue_number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
+          # Get the project item ID for this issue
+          ITEM_ID=$(gh api graphql -f query='
+            query {
+              repository(owner: "${{ env.OWNER }}", name: "${{ github.event.repository.name }}") {
+                issue(number: '$ISSUE_NUMBER') {
+                  projectItems(first: 10) {
+                    nodes {
+                      id
+                      project {
+                        number
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.repository.issue.projectItems.nodes[] | select(.project.number == ${{ env.PROJECT_NUMBER }}) | .id' 2>/dev/null || echo "")
+
+          echo "item_id=$ITEM_ID" >> $GITHUB_OUTPUT
+
+      - name: Update Status on PR Events
+        if: github.event_name == 'pull_request' && steps.get-item.outputs.item_id != ''
+        run: |
+          ITEM_ID="${{ steps.get-item.outputs.item_id }}"
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+          STATUS_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fnvA"
+          REVIEW_STATUS_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fs6E"
+
+          # Get status option IDs
+          STATUS_OPTIONS=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  field(name: "Status") {
+                    ... on ProjectV2SingleSelectField {
+                      options { id, name }
+                    }
+                  }
+                }
+              }
+            }' --jq '.data.node.field.options')
+
+          # Determine new status based on PR event
+          if [ "${{ github.event.action }}" == "opened" ] || [ "${{ github.event.action }}" == "ready_for_review" ]; then
+            STATUS_ID=$(echo "$STATUS_OPTIONS" | jq -r '.[] | select(.name == "In Review") | .id')
+            echo "Setting status to In Review..."
+          elif [ "${{ github.event.action }}" == "closed" ] && [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+            STATUS_ID=$(echo "$STATUS_OPTIONS" | jq -r '.[] | select(.name == "Done") | .id')
+            echo "Setting status to Done (PR merged)..."
+          elif [ "${{ github.event.action }}" == "closed" ]; then
+            STATUS_ID=$(echo "$STATUS_OPTIONS" | jq -r '.[] | select(.name == "In Progress") | .id')
+            echo "Setting status back to In Progress (PR closed without merge)..."
+          elif [ "${{ github.event.action }}" == "converted_to_draft" ]; then
+            STATUS_ID=$(echo "$STATUS_OPTIONS" | jq -r '.[] | select(.name == "In Progress") | .id')
+            echo "Setting status to In Progress (converted to draft)..."
+          fi
+
+          # Update status if we have a valid ID
+          if [ -n "$STATUS_ID" ]; then
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "'$PROJECT_ID'"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "'$STATUS_FIELD'"
+                  value: { singleSelectOptionId: "'$STATUS_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }'
+          fi
+
+      - name: Add labels based on Epic
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        run: |
+          # Extract story number from title
+          TITLE="${{ github.event.issue.title }}"
+          if echo "$TITLE" | grep -q "Story-1\."; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "epic-1-authentication"
+          elif echo "$TITLE" | grep -q "Story-2\."; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "epic-2-accounts"
+          elif echo "$TITLE" | grep -q "Story-3\."; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "epic-3-transactions"
+          elif echo "$TITLE" | grep -q "Story-4\."; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "epic-4-budgets"
+          elif echo "$TITLE" | grep -q "Story-5\."; then
+            gh issue edit ${{ github.event.issue.number }} --add-label "epic-5-dashboard"
+          fi
+
+      - name: Check for blocking keywords
+        if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '/blocked')
+        run: |
+          ITEM_ID="${{ steps.get-item.outputs.item_id }}"
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+          STATUS_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fnvA"
+          BLOCKED_REASON_FIELD="PVTF_lAHOA_Xhjc4BDod6zg1fs6U"
+
+          # Extract blocked reason from comment
+          REASON=$(echo "${{ github.event.comment.body }}" | sed -n 's/.*\/blocked \(.*\)/\1/p')
+
+          if [ -n "$REASON" ] && [ -n "$ITEM_ID" ]; then
+            # Get Blocked status ID
+            STATUS_OPTIONS=$(gh api graphql -f query='
+              {
+                node(id: "'$PROJECT_ID'") {
+                  ... on ProjectV2 {
+                    field(name: "Status") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options')
+
+            BLOCKED_STATUS=$(echo "$STATUS_OPTIONS" | jq -r '.[] | select(.name == "Blocked") | .id')
+
+            # Update status to Blocked
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "'$PROJECT_ID'"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "'$STATUS_FIELD'"
+                  value: { singleSelectOptionId: "'$BLOCKED_STATUS'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }'
+
+            # Update Blocked Reason field
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "'$PROJECT_ID'"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "'$BLOCKED_REASON_FIELD'"
+                  value: { text: "'$REASON'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }'
+
+            # Add comment confirming block
+            gh issue comment ${{ github.event.issue.number }} \
+              --body "🚫 **Issue Blocked**: $REASON
+
+              Status updated to Blocked in project board.
+              To unblock, comment with \`/unblock\`"
+          fi
+
+      - name: Update Documentation Status
+        if: github.event_name == 'pull_request' && github.event.action == 'opened'
+        run: |
+          # Check if documentation files are included in PR
+          DOCS_CHANGED=$(gh pr view ${{ github.event.pull_request.number }} --json files --jq '.files[].path' | grep -c "docs/" || echo "0")
+
+          if [ "$DOCS_CHANGED" -gt 0 ] && [ -n "${{ steps.get-item.outputs.item_id }}" ]; then
+            ITEM_ID="${{ steps.get-item.outputs.item_id }}"
+            PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+            DOC_STATUS_FIELD="PVTSSF_lAHOA_Xhjc4BDod6zg1fs54"
+
+            # Get "In Progress" option ID for Documentation Status
+            DOC_OPTIONS=$(gh api graphql -f query='
+              {
+                node(id: "'$PROJECT_ID'") {
+                  ... on ProjectV2 {
+                    field(name: "Documentation Status") {
+                      ... on ProjectV2SingleSelectField {
+                        options { id, name }
+                      }
+                    }
+                  }
+                }
+              }' --jq '.data.node.field.options')
+
+            IN_PROGRESS_ID=$(echo "$DOC_OPTIONS" | jq -r '.[] | select(.name | contains("In Progress")) | .id')
+
+            # Update Documentation Status
+            gh api graphql -f query='
+              mutation {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: "'$PROJECT_ID'"
+                  itemId: "'$ITEM_ID'"
+                  fieldId: "'$DOC_STATUS_FIELD'"
+                  value: { singleSelectOptionId: "'$IN_PROGRESS_ID'" }
+                }) {
+                  projectV2Item { id }
+                }
+              }'
+          fi

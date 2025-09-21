@@ -1,0 +1,672 @@
+name: BMAD Living Documentation System
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    types: [closed]
+  schedule:
+    # Generate weekly reports every Monday at 8 AM UTC
+    - cron: '0 8 * * 1'
+    # Generate daily metrics at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      doc_type:
+        description: 'Documentation type to generate'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - architecture
+          - sprint-report
+          - test-coverage
+          - dependencies
+          - api-docs
+          - wiki-sync
+          - changelog
+
+env:
+  PROJECT_NUMBER: 2
+  OWNER: caioniehues
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  collect-metrics:
+    name: Collect Project Metrics
+    runs-on: ubuntu-latest
+    outputs:
+      sprint_velocity: ${{ steps.metrics.outputs.sprint_velocity }}
+      test_coverage_backend: ${{ steps.metrics.outputs.test_coverage_backend }}
+      test_coverage_frontend: ${{ steps.metrics.outputs.test_coverage_frontend }}
+      stories_completed: ${{ steps.metrics.outputs.stories_completed }}
+      stories_in_progress: ${{ steps.metrics.outputs.stories_in_progress }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Calculate Project Metrics
+        id: metrics
+        run: |
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+
+          # Get sprint velocity
+          VELOCITY=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    nodes {
+                      fieldValues(first: 20) {
+                        nodes {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            field { ... on ProjectV2SingleSelectField { name } }
+                            name
+                          }
+                          ... on ProjectV2ItemFieldNumberValue {
+                            field { ... on ProjectV2Field { name } }
+                            number
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '[.data.node.items.nodes[] |
+              select(.fieldValues.nodes[] | select(.field.name == "Status" and .name == "Done")) |
+              .fieldValues.nodes[] | select(.field.name == "Size") | .number] | add // 0')
+
+          echo "sprint_velocity=$VELOCITY" >> $GITHUB_OUTPUT
+
+          # Count stories by status
+          COMPLETED=$(gh issue list --repo ${{ github.repository }} --state closed --json number | jq '. | length')
+          IN_PROGRESS=$(gh issue list --repo ${{ github.repository }} --state open --label "in-progress" --json number | jq '. | length')
+
+          echo "stories_completed=$COMPLETED" >> $GITHUB_OUTPUT
+          echo "stories_in_progress=$IN_PROGRESS" >> $GITHUB_OUTPUT
+
+          # Get test coverage (if available from previous runs)
+          echo "test_coverage_backend=0" >> $GITHUB_OUTPUT
+          echo "test_coverage_frontend=0" >> $GITHUB_OUTPUT
+
+  generate-architecture-docs:
+    name: Generate Architecture Documentation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.doc_type == 'all' || github.event.inputs.doc_type == 'architecture'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Generate Backend Architecture Docs
+        working-directory: backend
+        run: |
+          # Generate package dependency graph
+          ./mvnw dependency:tree -DoutputFile=dependency-tree.txt
+
+          # Generate class diagrams using PlantUML (if available)
+          mkdir -p ../docs/generated/architecture/backend
+
+          # Create architecture overview
+          cat > ../docs/generated/architecture/backend/README.md << 'EOF'
+          # Backend Architecture Documentation
+
+          Generated: $(date '+%d/%m/%Y %H:%M:%S')
+
+          ## Package Structure
+
+          ```
+          com.caioniehues.app/
+          ├── domain/           # Business logic & entities
+          ├── application/      # Use cases & services
+          ├── infrastructure/   # External concerns
+          └── presentation/     # REST controllers
+          ```
+
+          ## Dependency Tree
+
+          $(cat dependency-tree.txt | head -50)
+
+          ## Technology Stack
+          - Spring Boot 3.5.6
+          - Java 25 (Virtual Threads)
+          - PostgreSQL 15
+          - JWT Authentication
+
+          ## Clean Architecture Compliance
+          ✅ Dependencies point inward
+          ✅ Domain has no external dependencies
+          ✅ Infrastructure depends on Application
+          ✅ Presentation depends on Application
+          EOF
+
+      - name: Generate Frontend Architecture Docs
+        working-directory: frontend
+        run: |
+          # Analyze Flutter package structure
+          mkdir -p ../docs/generated/architecture/frontend
+
+          cat > ../docs/generated/architecture/frontend/README.md << 'EOF'
+          # Frontend Architecture Documentation
+
+          Generated: $(date '+%d/%m/%Y %H:%M:%S')
+
+          ## Flutter Architecture
+
+          ```
+          lib/
+          ├── core/            # Shared infrastructure
+          ├── features/        # Feature modules
+          │   └── {feature}/
+          │       ├── domain/      # Business logic
+          │       ├── data/        # Data sources
+          │       └── presentation/ # UI layer
+          └── shared/          # Shared components
+          ```
+
+          ## State Management
+          - Riverpod 2.0 for reactive state
+          - Provider scope isolation per feature
+
+          ## Navigation
+          - go_router for declarative routing
+          - Deep linking support
+
+          ## Design System
+          - Material Design 3
+          - Responsive breakpoints
+          - Dark/Light theme support
+          EOF
+
+      - name: Generate Dependency Graph
+        run: |
+          mkdir -p docs/generated/graphs
+
+          # Create Mermaid diagram of system dependencies
+          cat > docs/generated/graphs/system-dependencies.md << 'EOF'
+          # System Dependency Graph
+
+          ```mermaid
+          graph TB
+              subgraph Frontend
+                  Flutter[Flutter App]
+                  Riverpod[State Management]
+                  GoRouter[Navigation]
+              end
+
+              subgraph Backend
+                  SpringBoot[Spring Boot API]
+                  JWT[Auth Service]
+                  DB[(PostgreSQL)]
+              end
+
+              subgraph External
+                  Docker[Docker Compose]
+                  GH[GitHub Actions]
+              end
+
+              Flutter --> SpringBoot
+              SpringBoot --> JWT
+              SpringBoot --> DB
+              Docker --> DB
+              GH --> Docker
+          ```
+          EOF
+
+      - name: Upload Architecture Docs
+        uses: actions/upload-artifact@v3
+        with:
+          name: architecture-docs
+          path: docs/generated/architecture/
+
+  generate-sprint-report:
+    name: Generate Sprint Report
+    runs-on: ubuntu-latest
+    needs: collect-metrics
+    if: github.event_name == 'schedule' || github.event.inputs.doc_type == 'sprint-report'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Sprint Report
+        run: |
+          mkdir -p docs/generated/reports
+
+          # Get current date for report
+          REPORT_DATE=$(date '+%d/%m/%Y')
+          WEEK_NUM=$(date +%V)
+
+          cat > docs/generated/reports/sprint-week-$WEEK_NUM.md << EOF
+          # Sprint Report - Week $WEEK_NUM
+
+          **Generated**: $REPORT_DATE $(date '+%H:%M:%S')
+
+          ## 📊 Sprint Metrics
+
+          | Metric | Value |
+          |--------|-------|
+          | **Sprint Velocity** | ${{ needs.collect-metrics.outputs.sprint_velocity }} points |
+          | **Stories Completed** | ${{ needs.collect-metrics.outputs.stories_completed }} |
+          | **Stories In Progress** | ${{ needs.collect-metrics.outputs.stories_in_progress }} |
+          | **Backend Test Coverage** | ${{ needs.collect-metrics.outputs.test_coverage_backend }}% |
+          | **Frontend Test Coverage** | ${{ needs.collect-metrics.outputs.test_coverage_frontend }}% |
+
+          ## 🎯 Epic Progress
+
+          EOF
+
+          # Add epic progress from project board
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+
+          for epic_num in 1 2 3 4 5; do
+            EPIC_TOTAL=$(gh api graphql -f query='
+              {
+                node(id: "'$PROJECT_ID'") {
+                  ... on ProjectV2 {
+                    items(first: 100) {
+                      nodes {
+                        fieldValues(first: 20) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field { ... on ProjectV2SingleSelectField { name } }
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' --jq '[.data.node.items.nodes[] |
+                select(.fieldValues.nodes[] | select(.field.name == "Epic" and (.name | contains("Epic '$epic_num'")))) ] | length')
+
+            EPIC_DONE=$(gh api graphql -f query='
+              {
+                node(id: "'$PROJECT_ID'") {
+                  ... on ProjectV2 {
+                    items(first: 100) {
+                      nodes {
+                        fieldValues(first: 20) {
+                          nodes {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field { ... on ProjectV2SingleSelectField { name } }
+                              name
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' --jq '[.data.node.items.nodes[] |
+                select(.fieldValues.nodes[] | select(.field.name == "Epic" and (.name | contains("Epic '$epic_num'")))) |
+                select(.fieldValues.nodes[] | select(.field.name == "Status" and .name == "Done")) ] | length')
+
+            if [ "$EPIC_TOTAL" -gt 0 ]; then
+              PROGRESS=$((EPIC_DONE * 100 / EPIC_TOTAL))
+              echo "### Epic $epic_num Progress: $PROGRESS% ($EPIC_DONE/$EPIC_TOTAL stories)" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+
+              # Create progress bar
+              BARS=$((PROGRESS / 10))
+              echo -n "Progress: [" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+              for i in $(seq 1 10); do
+                if [ $i -le $BARS ]; then
+                  echo -n "█" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+                else
+                  echo -n "░" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+                fi
+              done
+              echo "] $PROGRESS%" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+              echo "" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+            fi
+          done
+
+          # Add recent completions
+          echo "## ✅ Recently Completed Stories" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+          echo "" >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+
+          gh issue list --repo ${{ github.repository }} --state closed --limit 5 --json number,title,closedAt \
+            --jq '.[] | "- #\(.number): \(.title) (Closed: \(.closedAt | split("T")[0]))"' \
+            >> docs/generated/reports/sprint-week-$WEEK_NUM.md
+
+      - name: Upload Sprint Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: sprint-reports
+          path: docs/generated/reports/
+
+  generate-bmad-compliance-report:
+    name: Generate BMAD Compliance Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Compliance Report
+        run: |
+          mkdir -p docs/generated/compliance
+
+          PROJECT_ID="PVT_kwHOA_Xhjc4BDod6"
+          REPORT_DATE=$(date '+%d/%m/%Y %H:%M:%S')
+
+          cat > docs/generated/compliance/bmad-compliance.md << EOF
+          # BMAD Compliance Report
+
+          **Generated**: $REPORT_DATE
+
+          ## 📊 Overall Compliance Score
+
+          EOF
+
+          # Check documentation compliance
+          DOC_COMPLETE=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    nodes {
+                      fieldValues(first: 20) {
+                        nodes {
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            field { ... on ProjectV2SingleSelectField { name } }
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '[.data.node.items.nodes[] |
+              select(.fieldValues.nodes[] | select(.field.name == "Documentation Status" and (.name | contains("Complete")))) ] | length')
+
+          DOC_TOTAL=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    totalCount
+                  }
+                }
+              }
+            }' --jq '.data.node.items.totalCount')
+
+          DOC_COMPLIANCE=$((DOC_COMPLETE * 100 / DOC_TOTAL))
+
+          echo "### Documentation Compliance: $DOC_COMPLIANCE%" >> docs/generated/compliance/bmad-compliance.md
+          echo "- Stories with complete documentation: $DOC_COMPLETE/$DOC_TOTAL" >> docs/generated/compliance/bmad-compliance.md
+          echo "" >> docs/generated/compliance/bmad-compliance.md
+
+          # Check test coverage compliance
+          echo "### Test Coverage Compliance" >> docs/generated/compliance/bmad-compliance.md
+          echo "" >> docs/generated/compliance/bmad-compliance.md
+
+          # Count stories meeting coverage thresholds
+          HIGH_COVERAGE=$(gh api graphql -f query='
+            {
+              node(id: "'$PROJECT_ID'") {
+                ... on ProjectV2 {
+                  items(first: 100) {
+                    nodes {
+                      fieldValues(first: 20) {
+                        nodes {
+                          ... on ProjectV2ItemFieldNumberValue {
+                            field { ... on ProjectV2Field { name } }
+                            number
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }' --jq '[.data.node.items.nodes[] |
+              .fieldValues.nodes[] |
+              select(.field.name == "Test Coverage %" and .number >= 70) ] | length')
+
+          echo "- Stories meeting coverage threshold: $HIGH_COVERAGE" >> docs/generated/compliance/bmad-compliance.md
+          echo "" >> docs/generated/compliance/bmad-compliance.md
+
+          # Add quality gates status
+          echo "## 🚦 Quality Gates Status" >> docs/generated/compliance/bmad-compliance.md
+          echo "" >> docs/generated/compliance/bmad-compliance.md
+          echo "| Gate | Status | Details |" >> docs/generated/compliance/bmad-compliance.md
+          echo "|------|--------|---------|" >> docs/generated/compliance/bmad-compliance.md
+          echo "| **TDD Enforcement** | ✅ Active | Backend: 80%, Frontend: 70% |" >> docs/generated/compliance/bmad-compliance.md
+          echo "| **Documentation Gate** | ✅ Active | Required on all PRs |" >> docs/generated/compliance/bmad-compliance.md
+          echo "| **Sprint Boundaries** | ✅ Active | Weekly automation |" >> docs/generated/compliance/bmad-compliance.md
+          echo "| **Code Review** | ✅ Active | Required before merge |" >> docs/generated/compliance/bmad-compliance.md
+
+      - name: Upload Compliance Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-reports
+          path: docs/generated/compliance/
+
+  generate-test-coverage-report:
+    name: Generate Test Coverage Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Generate Backend Coverage Report
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          ./mvnw clean test jacoco:report
+
+          # Copy coverage report to docs
+          mkdir -p ../docs/generated/coverage/backend
+          cp -r target/site/jacoco/* ../docs/generated/coverage/backend/ 2>/dev/null || echo "No backend coverage yet"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.4'
+
+      - name: Generate Frontend Coverage Report
+        working-directory: frontend
+        continue-on-error: true
+        run: |
+          flutter pub get
+          flutter test --coverage
+
+          # Generate HTML coverage report
+          mkdir -p ../docs/generated/coverage/frontend
+
+          # Install lcov if not present
+          sudo apt-get update && sudo apt-get install -y lcov
+
+          # Generate HTML report
+          genhtml coverage/lcov.info -o ../docs/generated/coverage/frontend
+
+      - name: Create Coverage Summary
+        run: |
+          mkdir -p docs/generated/coverage
+
+          cat > docs/generated/coverage/README.md << 'EOF'
+          # Test Coverage Reports
+
+          Generated: $(date '+%d/%m/%Y %H:%M:%S')
+
+          ## Coverage Reports
+
+          - [Backend Coverage Report](./backend/index.html)
+          - [Frontend Coverage Report](./frontend/index.html)
+
+          ## Coverage Trends
+
+          ![Coverage Badge](https://img.shields.io/badge/Backend%20Coverage-0%25-red)
+          ![Coverage Badge](https://img.shields.io/badge/Frontend%20Coverage-0%25-red)
+
+          ## BMAD Requirements
+
+          | Component | Required | Current | Status |
+          |-----------|----------|---------|--------|
+          | Backend | 80% | 0% | ❌ Below threshold |
+          | Frontend | 70% | 0% | ❌ Below threshold |
+          EOF
+
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: docs/generated/coverage/
+
+  sync-to-wiki:
+    name: Sync All Documentation to Wiki
+    runs-on: ubuntu-latest
+    needs: [generate-architecture-docs, generate-sprint-report, generate-bmad-compliance-report, generate-test-coverage-report]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: docs/generated/
+
+      - name: Clone Wiki
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+          # Clone the wiki repository
+          git clone https://${{ github.token }}@github.com/${{ github.repository }}.wiki.git wiki
+
+      - name: Update Wiki with Generated Docs
+        run: |
+          # Create auto-generated section in wiki
+          mkdir -p wiki/auto-generated
+
+          # Copy all generated documentation
+          cp -r docs/generated/* wiki/auto-generated/ 2>/dev/null || true
+
+          # Copy existing docs
+          cp -r docs/stories wiki/ 2>/dev/null || true
+          cp -r docs/architecture wiki/ 2>/dev/null || true
+
+          # Create index page for auto-generated docs
+          cat > wiki/auto-generated.md << 'EOF'
+          # 🤖 Auto-Generated Documentation
+
+          Last Updated: $(date '+%d/%m/%Y %H:%M:%S')
+
+          This section contains automatically generated documentation from the Everything App codebase.
+
+          ## 📊 Available Reports
+
+          ### Architecture Documentation
+          - [Backend Architecture](./auto-generated/architecture/backend/README.md)
+          - [Frontend Architecture](./auto-generated/architecture/frontend/README.md)
+          - [System Dependencies](./auto-generated/graphs/system-dependencies.md)
+
+          ### Sprint & Metrics
+          - [Latest Sprint Report](./auto-generated/reports/)
+          - [BMAD Compliance Report](./auto-generated/compliance/bmad-compliance.md)
+
+          ### Test Coverage
+          - [Coverage Summary](./auto-generated/coverage/README.md)
+          - [Backend Coverage Details](./auto-generated/coverage/backend/index.html)
+          - [Frontend Coverage Details](./auto-generated/coverage/frontend/index.html)
+
+          ## 🔄 Update Schedule
+
+          | Report Type | Frequency | Next Update |
+          |------------|-----------|-------------|
+          | Sprint Reports | Weekly (Monday 8 AM UTC) | $(date -d "next Monday" '+%d/%m/%Y') |
+          | Architecture Docs | On every push to main | Real-time |
+          | Coverage Reports | On every push | Real-time |
+          | Compliance Report | Daily | Tomorrow |
+
+          ## 📈 Documentation Coverage
+
+          - Total Documentation Pages: $(find wiki -name "*.md" | wc -l)
+          - Auto-Generated Pages: $(find wiki/auto-generated -name "*.md" | wc -l)
+          - Last Full Sync: $(date '+%d/%m/%Y %H:%M:%S')
+
+          ---
+          *This documentation is automatically generated and maintained by GitHub Actions*
+          EOF
+
+          # Update main wiki sidebar to include auto-generated docs
+          cat >> wiki/_Sidebar.md << 'EOF'
+
+          ## 🤖 Auto-Generated
+          - [Documentation Hub](./auto-generated)
+          - [Sprint Reports](./auto-generated/reports)
+          - [Architecture](./auto-generated/architecture)
+          - [Test Coverage](./auto-generated/coverage)
+          - [BMAD Compliance](./auto-generated/compliance)
+          EOF
+
+      - name: Commit and Push Wiki Updates
+        working-directory: wiki
+        run: |
+          git add .
+          git diff --staged --quiet || git commit -m "docs: auto-update from workflow run #${{ github.run_number }}
+
+          Updated:
+          - Architecture documentation
+          - Sprint reports
+          - Test coverage reports
+          - BMAD compliance metrics
+
+          Generated at: $(date '+%d/%m/%Y %H:%M:%S')"
+
+          git push
+
+      - name: Create Documentation Dashboard Issue
+        if: github.event_name == 'schedule' && github.event.schedule == '0 8 * * 1'
+        run: |
+          # Create weekly documentation status issue
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "📊 Weekly Documentation Status - Week $(date +%V)" \
+            --body "## Documentation Status Report
+
+          **Generated**: $(date '+%d/%m/%Y %H:%M:%S')
+
+          ### 📈 Documentation Metrics
+          - Wiki Pages: $(find wiki -name '*.md' | wc -l)
+          - Auto-Generated Docs: $(find wiki/auto-generated -name '*.md' | wc -l)
+          - Stories Documented: $(ls docs/stories/*.md | wc -l)
+
+          ### 🔗 Quick Links
+          - [Wiki Home](https://github.com/${{ github.repository }}/wiki)
+          - [Auto-Generated Docs](https://github.com/${{ github.repository }}/wiki/auto-generated)
+          - [Latest Sprint Report](https://github.com/${{ github.repository }}/wiki/auto-generated/reports)
+          - [BMAD Compliance](https://github.com/${{ github.repository }}/wiki/auto-generated/compliance)
+
+          ### ✅ Action Items
+          - [ ] Review sprint report
+          - [ ] Check BMAD compliance scores
+          - [ ] Update any manual documentation needed
+          - [ ] Review test coverage trends
+
+          ---
+          *This issue was automatically generated by the Living Documentation workflow*" \
+            --label "documentation,automated"

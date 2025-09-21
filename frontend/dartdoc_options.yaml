@@ -1,0 +1,47 @@
+# DartDoc Configuration for Everything App Frontend
+
+dartdoc:
+  # Categories for organizing API documentation
+  categories:
+    "Core":
+      markdown: |
+        Core infrastructure components including routing, theming,
+        networking, and shared utilities.
+    "Features":
+      markdown: |
+        Feature modules implementing the business logic for authentication,
+        accounts, transactions, budgets, and dashboard.
+    "Shared":
+      markdown: |
+        Reusable UI components and widgets used across the application.
+
+  # Include/Exclude patterns
+  include:
+    - 'lib/**'
+  exclude:
+    - '**/*.g.dart'
+    - '**/*.freezed.dart'
+    - 'test/**'
+
+  # Documentation settings
+  showUndocumentedCategories: true
+
+  # Footer for all pages
+  footer: |
+    <p>Everything App - Family Financial Management Platform</p>
+    <p>Built with Flutter 3.35.4 | Material Design 3 | Riverpod 2.0</p>
+    <p>Documentation generated: {tool_date}</p>
+
+  # Header for all pages
+  header: |
+    <h1>Everything App Frontend API Documentation</h1>
+    <p>Clean Architecture | TDD | BMAD Compliant</p>
+
+  # External documentation links
+  externalPackages:
+    - url: https://api.flutter.dev/
+      name: Flutter SDK
+    - url: https://pub.dev/documentation/riverpod/latest/
+      name: Riverpod
+    - url: https://pub.dev/documentation/go_router/latest/
+      name: go_router
