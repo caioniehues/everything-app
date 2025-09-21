@@ -37,16 +37,46 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-            
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
+            You are reviewing a PR for the Everything App project. Follow the CLAUDE.md guidelines and BMAD workflow.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            Please review this pull request and verify:
+
+            ## Story Validation
+            - Check if PR references a story from /docs/stories/
+            - Verify the implementation matches story acceptance criteria
+            - Confirm all story tasks are addressed
+
+            ## TDD Compliance (CRITICAL)
+            - Verify tests were written BEFORE implementation
+            - Check test coverage meets requirements (Backend: 80%, Frontend: 70%)
+            - Ensure tests follow Given-When-Then pattern
+
+            ## Code Quality
+            - NO TODO/FIXME comments allowed
+            - Follow clean architecture layers (Domain, Application, Infrastructure, Presentation)
+            - Check naming conventions and code organization
+            - Verify proper error handling
+
+            ## Security Review
+            - No hardcoded secrets or credentials
+            - JWT implementation correct (15min access, 7-day refresh)
+            - Input validation and output sanitization
+            - Rate limiting on auth endpoints
+
+            ## Documentation
+            - Check if relevant docs are updated
+            - Verify API documentation for new endpoints
+            - Ensure story status is updated if completed
+
+            ## Performance
+            - Check for N+1 queries
+            - Verify pagination for lists
+            - Review caching strategies
+
+            Format your review with clear sections and actionable feedback.
+            Use `gh pr comment` to post your review on the PR.
+
+            If the PR doesn't meet TDD requirements or has TODOs, request changes.
           
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options

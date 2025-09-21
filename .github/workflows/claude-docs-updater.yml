@@ -1,0 +1,90 @@
+name: Claude Documentation Updater
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/src/main/**/*.java'
+      - 'frontend/lib/**/*.dart'
+      - 'docs/stories/*.md'
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of documentation update'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - api-docs
+          - architecture
+          - all
+
+jobs:
+  update-documentation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update Documentation
+        id: docs-updater
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Update project documentation based on recent changes.
+
+            ## Documentation Tasks:
+
+            ### 1. Development Status Update
+            - Read /docs/development-status.md
+            - Check completed stories in /docs/stories/
+            - Update sprint progress
+            - Calculate velocity metrics
+            - Update timeline projections
+            - Use `date '+%d/%m/%Y %H:%M:%S'` for timestamps
+
+            ### 2. API Documentation
+            - Scan for new/modified REST endpoints
+            - Update API documentation with:
+              - Endpoint paths and methods
+              - Request/response schemas
+              - Authentication requirements
+              - Rate limiting details
+            - Generate OpenAPI/Swagger if needed
+
+            ### 3. Architecture Updates
+            - Check for new packages/dependencies
+            - Update /docs/architecture/source-tree.md if structure changed
+            - Update tech-stack.md with new libraries
+            - Document architectural decisions
+
+            ### 4. Story Status Updates
+            - Check merged PRs that reference stories
+            - Update story status from Draft to In Progress or Complete
+            - Update epic-story-summary.md
+            - Calculate story points completed
+
+            ### 5. README Sync
+            - Update development status section
+            - Update progress percentages
+            - Sync tech stack versions
+
+            ## Update Strategy:
+            1. Create a new branch: docs/auto-update-{timestamp}
+            2. Make necessary documentation updates
+            3. Create PR with summary of changes
+            4. Tag with "documentation" label
+
+            Focus on accuracy and maintaining consistency across all documentation.
+            Don't create unnecessary files, update existing ones.
+
+          claude_args: '--allowed-tools "Bash(git:*),Bash(gh pr create:*),Bash(date:*)"'

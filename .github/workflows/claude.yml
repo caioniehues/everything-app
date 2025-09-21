@@ -35,16 +35,43 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          
+
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          # prompt: 'Update the pull request description to include a summary of changes.'
+          # Custom prompt with project context
+          prompt: |
+            You've been mentioned in a GitHub comment for the Everything App project.
 
-          # Optional: Add claude_args to customize behavior and configuration
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://docs.claude.com/en/docs/claude-code/sdk#command-line for available options
-          # claude_args: '--model claude-opus-4-1-20250805 --allowed-tools Bash(gh pr:*)'
+            Before responding, read CLAUDE.md for project context, including:
+            - BMAD workflow and story-driven development
+            - TDD requirements (80% backend, 70% frontend coverage)
+            - No TODO/FIXME policy
+            - Clean architecture principles
+
+            Context about virtual team roles:
+            - Sarah (PO): Product decisions, story prioritization
+            - Winston (Architect): Technical design, architecture
+            - Ruby (Backend): Spring Boot, Java, API development
+            - Sally (UX): UI/UX design, user experience
+
+            Common tasks you might be asked to help with:
+            - Implement a story from /docs/stories/
+            - Review code for quality and standards
+            - Update documentation
+            - Fix failing tests
+            - Explain architecture decisions
+            - Generate test cases
+
+            Always:
+            - Reference relevant stories
+            - Follow TDD approach
+            - Update documentation
+            - Maintain test coverage
+
+            The user's request is in the comment that tagged you. Respond appropriately.
+
+          # Enhanced tool permissions for comprehensive assistance
+          claude_args: '--allowed-tools "Bash(gh:*),Bash(git:*),Bash(mvn:*),Bash(flutter:*),Bash(docker:*),Bash(date:*)"'
 

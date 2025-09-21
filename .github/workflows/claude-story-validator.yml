@@ -1,0 +1,81 @@
+name: Claude Story Validator
+
+on:
+  pull_request:
+    types: [opened, edited]
+  issues:
+    types: [opened, edited, labeled]
+
+jobs:
+  story-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate Story Implementation
+        id: story-validator
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Validate that this PR or Issue properly follows the BMAD story-driven development process.
+
+            ## For Pull Requests:
+
+            1. **Story Reference Validation**
+               - PR must reference a story from /docs/stories/
+               - Story ID should be in format: Story-X.Y or Story-X.Y.Z
+               - Check PR title and description for story reference
+
+            2. **Acceptance Criteria Check**
+               - Read the referenced story file
+               - Compare implementation with acceptance criteria
+               - List which criteria are met/not met
+               - Check if all story tasks are addressed
+
+            3. **Branch Naming**
+               - Should follow: feature/story-x.y-description
+               - Validate branch name matches referenced story
+
+            4. **Documentation Updates**
+               - Check if story status needs updating
+               - Verify relevant docs are updated
+               - Check if epic-story-summary.md needs updating
+
+            ## For Issues:
+
+            1. **Story Creation Check**
+               - If labeled as "story", validate format
+               - Check against story template
+               - Verify epic assignment
+               - Validate story points and estimates
+
+            2. **Story Linking**
+               - Check if issue links to existing stories
+               - Verify dependency chain
+               - Check for story conflicts
+
+            ## Actions to Take:
+
+            For PRs:
+            - Add label "story-validated" if all checks pass
+            - Add label "needs-story" if no story reference
+            - Comment with validation results using `gh pr comment`
+
+            For Issues:
+            - Add appropriate labels based on story type
+            - Comment with story template if needed
+            - Link to related stories in /docs/stories/
+
+            Format response with clear checklist showing what passed/failed.
+
+          claude_args: '--allowed-tools "Bash(gh pr comment:*),Bash(gh issue comment:*),Bash(gh pr edit:*),Bash(gh issue edit:*),Bash(gh label:*)"'

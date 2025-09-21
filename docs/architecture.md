@@ -1,5 +1,20 @@
 # Everything App - Technical Architecture (Enhanced)
 
+## Document Information
+
+| Field | Value |
+|-------|-------|
+| Version | 2.0.0 |
+| Created | 20/09/2025 |
+| Updated | 21/09/2025 01:04:41 |
+| Author | Winston (Architect) |
+| Status | Active |
+| Related Documents | See [Related Documents](#related-documents) |
+
+## Executive Summary
+
+This document provides the high-level technical architecture for the Everything App. It defines the system architecture, database schema, API design, and implementation patterns. For detailed frontend architecture, refer to [`/docs/architecture/frontend-architecture.md`](./architecture/frontend-architecture.md).
+
 ## System Architecture
 
 ### High-Level Design
@@ -888,178 +903,29 @@ public class NotificationService {
 
 ## Frontend Architecture (Flutter)
 
-### Project Structure
-```
-lib/
-├── main.dart
-├── app.dart
-├── core/
-│   ├── config/
-│   │   ├── app_config.dart
-│   │   ├── theme_config.dart
-│   │   └── api_config.dart
-│   ├── constants/
-│   │   ├── app_colors.dart
-│   │   ├── app_strings.dart
-│   │   └── app_dimensions.dart
-│   ├── errors/
-│   │   ├── failures.dart
-│   │   └── exceptions.dart
-│   ├── network/
-│   │   ├── api_client.dart
-│   │   ├── auth_interceptor.dart
-│   │   └── error_interceptor.dart
-│   └── utils/
-│       ├── currency_formatter.dart
-│       ├── date_formatter.dart
-│       └── validators.dart
-├── features/
-│   ├── auth/
-│   │   ├── data/
-│   │   │   ├── models/
-│   │   │   ├── repositories/
-│   │   │   └── datasources/
-│   │   ├── domain/
-│   │   │   ├── entities/
-│   │   │   ├── repositories/
-│   │   │   └── usecases/
-│   │   └── presentation/
-│   │       ├── providers/
-│   │       ├── screens/
-│   │       └── widgets/
-│   ├── dashboard/
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │       ├── providers/
-│   │       ├── screens/
-│   │       └── widgets/
-│   ├── accounts/
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   ├── transactions/
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   └── budgets/
-│       ├── data/
-│       ├── domain/
-│       └── presentation/
-└── shared/
-    ├── widgets/
-    │   ├── responsive_builder.dart
-    │   ├── loading_indicator.dart
-    │   ├── error_widget.dart
-    │   └── empty_state.dart
-    └── providers/
-        ├── app_state_provider.dart
-        └── theme_provider.dart
-```
+> **Note**: For comprehensive frontend architecture details including state management patterns, component architecture, navigation structure, and performance optimizations, please refer to [`/docs/architecture/frontend-architecture.md`](./architecture/frontend-architecture.md).
 
-### State Management (Riverpod)
+### Key Frontend Decisions
 
-```dart
-// Auth State
-final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(ref.read(authRepositoryProvider));
-});
+- **Framework**: Flutter 3.35.4 with Dart 3.9.2
+- **State Management**: Riverpod 2.0 with code generation
+- **Navigation**: go_router for declarative routing
+- **Architecture Pattern**: Feature-first clean architecture
+- **Design System**: Material Design 3 with custom financial components
+- **API Client**: Dio with interceptors for auth and error handling
+- **Local Storage**: Hive for caching, Flutter Secure Storage for sensitive data
 
-// Account Providers
-final accountsProvider = FutureProvider<List<Account>>((ref) async {
-  final authState = ref.watch(authStateProvider);
-  if (authState is! Authenticated) return [];
+### Implementation Status
 
-  final repository = ref.read(accountRepositoryProvider);
-  return repository.getAccounts();
-});
-
-final selectedAccountProvider = StateProvider<Account?>((ref) => null);
-
-// Transaction Providers with Pagination
-final transactionListProvider = StateNotifierProvider.family<
-    TransactionListNotifier,
-    AsyncValue<TransactionPage>,
-    TransactionFilter
->((ref, filter) {
-  return TransactionListNotifier(
-    ref.read(transactionRepositoryProvider),
-    filter,
-  );
-});
-
-// Dashboard Provider with Caching
-final dashboardProvider = FutureProvider<DashboardData>((ref) async {
-  // Auto-refresh when accounts or transactions change
-  ref.watch(accountsProvider);
-  ref.watch(latestTransactionsProvider);
-
-  final repository = ref.read(dashboardRepositoryProvider);
-  return repository.getDashboard();
-});
-```
-
-### Responsive Design System
-
-```dart
-class ResponsiveBreakpoints {
-  static const double mobile = 600;
-  static const double tablet = 900;
-  static const double desktop = 1200;
-}
-
-class ResponsiveBuilder extends StatelessWidget {
-  final Widget Function(BuildContext, BoxConstraints, ScreenType) builder;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenType = _getScreenType(constraints.maxWidth);
-        return builder(context, constraints, screenType);
-      },
-    );
-  }
-
-  ScreenType _getScreenType(double width) {
-    if (width < ResponsiveBreakpoints.mobile) return ScreenType.mobile;
-    if (width < ResponsiveBreakpoints.tablet) return ScreenType.tablet;
-    return ScreenType.desktop;
-  }
-}
-```
-
-### API Client Configuration
-
-```dart
-class ApiClient {
-  late final Dio _dio;
-
-  ApiClient() {
-    _dio = Dio(BaseOptions(
-      baseUrl: AppConfig.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
-
-    _dio.interceptors.addAll([
-      AuthInterceptor(),
-      ErrorInterceptor(),
-      if (kDebugMode) LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-      ),
-    ]);
-  }
-
-  Future<T> get<T>(String path, {Map<String, dynamic>? queryParameters}) async {
-    final response = await _dio.get<T>(path, queryParameters: queryParameters);
-    return response.data!;
-  }
-
-  // POST, PUT, DELETE methods...
-}
-```
+| Component | Status | Story |
+|-----------|--------|-------|
+| Project Structure | ⏳ Pending | Story 1.2 |
+| State Management | ⏳ Pending | Story 1.2 |
+| Navigation | ⏳ Pending | Story 1.2 |
+| Theme Configuration | ⏳ Pending | Story 1.2 |
+| API Client | ⏳ Pending | Story 1.2 |
+| Auth Screens | ⏳ Pending | Story 1.4 |
+| Core Features | ⏳ Pending | Epic 2 |
 
 ## Performance Optimization
 
@@ -1342,14 +1208,64 @@ public class LoggingAspect {
 4. ADR-004: Use Riverpod for State Management
 5. ADR-005: Adopt Clean Architecture Pattern
 
+## Implementation Status
+
+### Completed ✅
+
+- **Story 1.1: Backend Infrastructure**
+  - Spring Boot 3.5.6 with Java 25 configured
+  - PostgreSQL database with Docker Compose
+  - Domain entities (User, Role, RefreshToken, Event)
+  - Repository layer with custom queries
+  - Liquibase migrations initialized
+  - 90% test coverage on domain layer
+  - Virtual Threads enabled
+
+### In Progress 🔄
+
+- **Story 1.2: Flutter Project Setup** (Next Priority)
+  - Initialize Flutter project structure
+  - Configure Riverpod and routing
+  - Set up Material Design 3 theme
+
+- **Story 1.3: Authentication API** (High Priority)
+  - JWT service implementation
+  - Auth endpoints with Spring Security
+  - Rate limiting with Bucket4j
+
+### Pending ⏳
+
+- **Epic 2: Core Financial Features**
+- **Epic 3: Budget Management**
+- **Epic 4: Analytics & Insights**
+
+## Related Documents
+
+### Architecture Documentation
+
+| Document | Purpose | Location |
+|----------|---------|----------|
+| Frontend Architecture | Detailed Flutter implementation patterns | [`/docs/architecture/frontend-architecture.md`](./architecture/frontend-architecture.md) |
+| UI/UX Specification | Design system and user flows | [`/docs/front-end-spec.md`](../front-end-spec.md) |
+| Coding Standards | Development conventions and practices | [`/docs/architecture/coding-standards.md`](./architecture/coding-standards.md) |
+| Technology Stack | Version matrix and dependencies | [`/docs/architecture/tech-stack.md`](./architecture/tech-stack.md) |
+| Source Tree Guide | Project structure documentation | [`/docs/architecture/source-tree.md`](./architecture/source-tree.md) |
+| Architecture Checklist | Validation and readiness assessment | [`/docs/architecture/architecture-checklist.md`](./architecture/architecture-checklist.md) |
+
+### Story Documentation
+
+| Story | Status | Location |
+|-------|--------|----------|
+| Story 1.1 | ✅ Complete | [`/docs/stories/story-1.1-backend-infrastructure.md`](../stories/story-1.1-backend-infrastructure.md) |
+| Story 1.2 | ⏳ Pending | [`/docs/stories/story-1.2-flutter-setup.md`](../stories/story-1.2-flutter-setup.md) |
+| Story 1.3 | ⏳ Pending | [`/docs/stories/story-1.3-authentication-api.md`](../stories/story-1.3-authentication-api.md) |
+
 ## Next Steps
 
-1. **Implementation Priority**
-   - Set up development environment
-   - Initialize Spring Boot project with dependencies
-   - Create database schema with Flyway
-   - Implement authentication module
-   - Build Flutter project structure
+1. **Immediate Priority (Week 1)**
+   - Complete Story 1.2: Flutter Project Setup
+   - Complete Story 1.3: Authentication API
+   - Begin Story 1.4: Flutter Auth Screens
 
 2. **Technical Spikes Needed**
    - CSV/OFX parsing library evaluation
@@ -1362,3 +1278,10 @@ public class LoggingAspect {
    - Handle network disconnections gracefully
    - Implement data consistency checks
    - Design for horizontal scaling
+
+## Change Log
+
+| Date | Version | Changes | Author |
+|------|---------|---------|--------|
+| 20/09/2025 | 1.0.0 | Initial architecture document | Unknown |
+| 21/09/2025 01:04:41 | 2.0.0 | Added metadata, updated references, separated frontend details | Winston |
